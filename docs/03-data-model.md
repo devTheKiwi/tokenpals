@@ -53,7 +53,7 @@ CREATE TABLE devices (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     account_id      UUID REFERENCES accounts(id) ON DELETE CASCADE,
     name            TEXT NOT NULL,             -- "맥북프로", "데스크탑"
-    character_key   TEXT NOT NULL,             -- "cat", "dog", "fox"
+    color_index     INT NOT NULL,              -- 0~5, ClaudePet PetColor.palette index
     hostname        TEXT,                      -- 자동 감지값 (디버그용)
     os_version      TEXT,
     app_version     TEXT,
@@ -64,6 +64,9 @@ CREATE TABLE devices (
     UNIQUE (account_id, name)
 );
 ```
+
+> `color_index`는 ClaudePet `PetColor.palette` 인덱스에 매핑:
+> 0=오렌지, 1=블루, 2=그린, 3=퍼플, 4=핑크, 5=틸. 디바이스 등록시 사용자가 선택.
 
 ### sessions
 
@@ -120,7 +123,7 @@ CREATE INDEX idx_turns_session ON turns(session_id, turn_index);
 ```sql
 CREATE TABLE device_status (
     device_id              UUID PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
-    mood                   TEXT NOT NULL,        -- "happy" | "working" | "sleepy" | ...
+    mood                   TEXT NOT NULL,        -- "happy" | "working" | "sleepy" | "confused" | "stressed" | "danger" | "offline"
     speech_bubble          TEXT,                  -- "지금 코딩중!"
     current_session_id     UUID,
     current_session_tokens BIGINT DEFAULT 0,
@@ -131,6 +134,8 @@ CREATE TABLE device_status (
     updated_at             TIMESTAMPTZ DEFAULT now()
 );
 ```
+
+`mood` 값은 캐릭터의 행동을 결정 (자세한 매핑은 [04-ui-and-characters.md](04-ui-and-characters.md) 참고).
 
 ### achievements & user_achievements
 
@@ -175,7 +180,7 @@ WITH CHECK (account_id IN (
 
 ## 로컬 SQLite 미러
 
-> Supabase 동일 스키마 + 동기화 보조 테이블.
+> Supabase 동일 스키마 + 동기화 보조 테이블 + 방 윈도우 UI 상태.
 
 ```sql
 -- 동기화 큐 (오프라인 대응)
@@ -196,7 +201,36 @@ CREATE TABLE jsonl_cursors (
     last_mtime   INTEGER NOT NULL,    -- 파일 mtime 변동 감지용
     last_synced  DATETIME
 );
+
+-- 방 안 캐릭터 위치 (로컬 전용, sync 안 함)
+-- 각 디바이스 캐릭터의 현재 좌표 / 행동을 저장. 앱 재시작 후 위치 복원용.
+CREATE TABLE pet_positions (
+    device_id      TEXT PRIMARY KEY,
+    room_x         REAL NOT NULL,         -- 방 좌표 (0.0 ~ 1.0 비율, 리사이즈 대응)
+    room_y         REAL NOT NULL,
+    facing         TEXT,                  -- "left" | "right"
+    current_zone   TEXT,                  -- "desk" | "bed" | "kitchen" | "free" | NULL (Phase 1: free only)
+    behavior       TEXT,                  -- "standing" | "walking" | "sleeping" | "fidgeting"
+    updated_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 방 윈도우 사용자 설정 (로컬 전용)
+CREATE TABLE room_settings (
+    id             INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),  -- 단일 행
+    window_width   REAL DEFAULT 480.0,
+    window_height  REAL DEFAULT 360.0,
+    is_pinned      BOOLEAN DEFAULT FALSE,
+    pet_speed      REAL DEFAULT 1.0,      -- 캐릭터 이동 속도 배율
+    theme          TEXT DEFAULT 'empty',  -- Phase 1: 'empty', Phase 3: 'office', 'cozy', 'zen', ...
+    show_labels    BOOLEAN DEFAULT TRUE   -- 캐릭터 위 디바이스 이름 표시
+);
 ```
+
+### 좌표 정책
+
+- `room_x`, `room_y`는 **0.0~1.0 비율**로 저장 → 윈도우 리사이즈해도 상대 위치 유지
+- 캐릭터 픽셀 위치 = `(roomBounds.width * room_x, roomBounds.height * room_y)`
+- 매 프레임 업데이트는 메모리에만, DB 저장은 1초마다 또는 종료시 (디스크 IO 최소화)
 
 ## 도메인 계산 로직
 

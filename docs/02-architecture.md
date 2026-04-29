@@ -11,14 +11,16 @@
 │  ~/.claude-alt/projects/*.jsonl                 │
 │  ~/.claude-account2/projects/*.jsonl   ← 멀티   │
 │        ↑ FSEvents 워처                          │
-│  ┌──────────── TokenPals 앱 ─────────────┐    │
-│  │  1. JSONL 파일 워처                     │    │
-│  │  2. 토큰/모델/캐시 파싱                 │    │
-│  │  3. 로컬 SQLite (오프라인 대비)          │ ───┼───> Supabase
-│  │  4. Supabase 동기화                     │ <──┼──── Realtime
-│  │  5. SwiftUI 메뉴바 + 팝오버             │    │     구독
-│  │  6. 캐릭터 상태 머신                    │    │
-│  │  7. 알림 디스패처                       │    │
+│  ┌──────────── TokenPals 앱 (AppKit/SPM) ─┐    │
+│  │  1. JSONL 파일 워처 (FSEvents)          │    │
+│  │  2. 토큰/모델/캐시 파싱 (TokenTracker)  │    │
+│  │  3. 로컬 SQLite (오프라인 대비)         │ ───┼───> Supabase
+│  │  4. Supabase 동기화 (큐 기반)           │ <──┼──── Realtime
+│  │  5. AppKit 메뉴바 (보조)                │    │     구독
+│  │  6. AppKit 방 윈도우 (메인 UX)          │    │
+│  │     ├─ RoomView + 다수 PetActor         │    │
+│  │     └─ 캐릭터 상태 머신/애니메이션      │    │
+│  │  7. UserNotifications 알림              │    │
 │  └─────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────┘
                         │
@@ -200,8 +202,40 @@ Row Level Security:
 - RLS로 다른 계정 데이터 격리
 - 로컬 SQLite는 macOS Keychain으로 보호된 데이터 디렉토리에
 
+## UI 아키텍처 (AppKit)
+
+```
+NSApplication (.accessory) ─ Dock 아이콘 숨김
+  ├─ NSStatusItem (메뉴바 아이콘 + 작은 메뉴)
+  ├─ RoomWindow: NSWindow (메인 UX, 핀 가능, 리사이즈)
+  │   └─ RoomView: NSView
+  │       ├─ 배경 드로잉 (방)
+  │       ├─ PetActor[] (디바이스마다 1개)
+  │       │   ├─ 좌표/상태/색상
+  │       │   ├─ NSBezierPath 캐릭터 드로잉 (ClaudePet 차용)
+  │       │   └─ 15fps Timer 애니메이션
+  │       └─ MiniSpeechBubble (캐릭터 머리 위)
+  ├─ DetailWindow: NSWindow (디바이스 더블클릭시)
+  └─ SettingsWindow: NSWindow (설정)
+```
+
+**핵심 차용 (ClaudePet)**:
+- `PetView.draw(_:)` → `PetActor.draw()` 거의 그대로
+- `PetState` enum + `tick()` 애니메이션
+- 6색 `PetColor.palette`
+- `TokenTracker.swift` JSONL 파싱
+- `L10n` i18n 구조
+
+**핵심 신규**:
+- `RoomView`: 여러 PetActor를 한 NSView 안에 호스팅
+- 좌표계가 화면 전체 → 방 영역으로 제한
+- Supabase 클라이언트 + Realtime 구독
+- 멀티 `.claude*` 폴더 동시 워칭
+
 ## 외부 의존성
 
-- **macOS 14+**: SwiftUI 신규 API (메뉴바 위젯, Charts) 활용
+- **macOS 13+ Apple Silicon**: AppKit, FSEvents, UserNotifications, WidgetKit 사용
+- **Swift Package Manager**: 빌드 시스템. `swift build` / `swift run`
 - **Supabase**: 매니지드 BaaS — 무료 티어 제한 도달시 대안 (Self-hosted, Firebase) 검토
 - **Anthropic Claude Code**: JSONL 포맷 변경시 파서 업데이트 필요
+- **ClaudePet (참고 레포)**: MIT 라이센스, 캐릭터/애니메이션/JSONL 파싱 패턴 차용 (자세한 정책은 [06-tech-decisions.md ADR-010](06-tech-decisions.md))
