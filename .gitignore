@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editors
+.obsidian/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Xcode (Phase 0 시작시 활성화)
+DerivedData/
+build/
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+
+# Swift Package Manager
+.build/
+Packages/
+Package.resolved
+
+# Secrets
+.env
+.env.local
+*.p12
+*.cer
+GoogleService-Info.plist
