@@ -16,6 +16,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var deviceManager: DeviceManager!
     var deviceInfo: LocalDeviceInfo?
     var signInWindow: SignInWindow?
+    var deviceStatusManager: DeviceStatusManager?
+    var sessionSyncManager: SessionSyncManager?
+    var realtimeManager: RealtimeManager?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Settings.registerDefaults()
@@ -51,15 +54,52 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await MainActor.run {
                 self.deviceInfo = info
                 NSLog("[TokenPals] 디바이스 등록: \(info.name) (id=\(info.id), account=\(info.accountId))")
+
+                // Phase 2.4: Realtime 매니저 시작
+                self.setupRealtimeManagers(deviceId: info.id, accountId: info.accountId)
             }
         } catch {
             NSLog("[TokenPals] 디바이스 등록 실패: \(error.localizedDescription)")
         }
     }
 
+    /// Phase 2.4: Realtime 매니저 시작 (device_status, sessions, realtime).
+    private func setupRealtimeManagers(deviceId: String, accountId: String) {
+        // 1. DeviceStatusManager: 30초 heartbeat
+        deviceStatusManager = DeviceStatusManager(
+            client: supabase.client,
+            deviceId: deviceId,
+            accountId: accountId
+        )
+        deviceStatusManager?.start()
+
+        // 2. SessionSyncManager: 60초마다 JSONL → DB 동기화
+        sessionSyncManager = SessionSyncManager(
+            client: supabase.client,
+            tokenTracker: tokenTracker,
+            deviceId: deviceId,
+            accountId: accountId
+        )
+        sessionSyncManager?.start()
+
+        // 3. RealtimeManager: device_status 구독
+        realtimeManager = RealtimeManager(
+            client: supabase.client,
+            accountId: accountId
+        )
+        realtimeManager?.onDeviceStatusChanged = { [weak self] deviceId, status in
+            // 다른 디바이스 상태 변화 → UI 업데이트 (향후 multi-pet)
+            NSLog("[TokenPals] 다른 디바이스 상태 변화 감지: \(deviceId)")
+        }
+        realtimeManager?.subscribe()
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         fileWatcher?.stop()
         usageEngine?.stop()
+        deviceStatusManager?.stop()
+        sessionSyncManager?.stop()
+        realtimeManager?.unsubscribe()
     }
 
     private func setupNotifications() {
@@ -267,6 +307,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateStatusBarTitle(with: summary)
         rebuildStatusMenu()
         notificationManager?.handleUsageUpdate(summary)
+
+        // Phase 2.4: device_status 업데이트 (Realtime)
+        Task { [weak self] in
+            guard let self = self, let deviceStatusManager = self.deviceStatusManager else { return }
+
+            // mood 계산 (PetActor의 computeMood와 동일)
+            let mood: String
+            let fiveHourBudget = UserDefaults.standard.integer(forKey: SettingsKey.fiveHourBudget)
+            let budget = fiveHourBudget > 0 ? fiveHourBudget : 5
+            let alarmThreshold = Int(Double(budget) * 3600 * 0.95)
+
+            if summary.fiveHourBillable >= alarmThreshold {
+                mood = "alarm"
+            } else if let lastActivity = summary.lastActivityAt, Date().timeIntervalSince(lastActivity) > 30 * 60 {
+                mood = "sleepy"
+            } else if let lastActivity = summary.lastActivityAt, Date().timeIntervalSince(lastActivity) < 5 * 60 {
+                mood = "working"
+            } else {
+                mood = "normal"
+            }
+
+            await deviceStatusManager.updateStatus(
+                mood: mood,
+                fiveHourTokens: summary.fiveHourTotal,
+                cacheHitRate: summary.cacheHitRate,
+                currentSessionTokens: 0
+            )
+        }
     }
 
     // MARK: - Actions
