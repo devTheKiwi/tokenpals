@@ -51,7 +51,7 @@ REPO_DIR="${HOME}/tokenpals"
 if [ ! -d "$REPO_DIR/.git" ]; then
     info "저장소를 $REPO_DIR 에 클론 중..."
     rm -rf "$REPO_DIR" 2>/dev/null || true
-    git clone https://github.com/sungrangkim/tokenpals.git "$REPO_DIR" || error "저장소 클론 실패"
+    git clone https://github.com/devTheKiwi/tokenpals.git "$REPO_DIR" || error "저장소 클론 실패"
 else
     info "기존 저장소 업데이트 중..."
     cd "$REPO_DIR"
