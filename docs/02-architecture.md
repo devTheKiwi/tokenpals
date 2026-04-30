@@ -69,6 +69,22 @@
 - "이 폴더는 어떤 계정으로 인식할지" 라벨링
 - 계정마다 별도 펫 그룹 (또는 별도 방)
 
+### 결정 2.5: Email OTP 로그인
+
+**선택**: Supabase Auth Email OTP (비밀번호 없음)
+**이유**:
+- 간단 + 안전 (6자리 코드, 재발송 기능)
+- Keychain 자동 저장 (세션 지속)
+- 멀티 디바이스에서 같은 계정 로그인 가능
+- 구글 OAuth 복잡성 회피 (Phase 3+ 검토)
+
+**흐름**:
+1. SignInWindow에서 이메일 입력 → `AuthManager.sendOTP(email:)`
+2. 이메일로 6자리 코드 수신
+3. 코드 입력 → `AuthManager.verifyOTP(email:, code:)`
+4. 로컬 세션 저장 (Supabase SDK가 Keychain 관리)
+5. DeviceManager가 자동으로 account/device 생성
+
 ### 결정 3: 로컬 SQLite + Supabase 이중화
 
 | 데이터 | 로컬 SQLite | Supabase |

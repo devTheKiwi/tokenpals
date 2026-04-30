@@ -30,11 +30,15 @@ struct TokenUsage {
 
 class TokenTracker {
     /// 추적 대상 projects 경로들.
-    /// Phase 1: `~/.claude/projects` 단일 계정만. 멀티 계정은 Phase 2+에서 확장.
+    /// Phase 2.3: 로그인 이메일과 일치하는 폴더만 포함.
     let claudeProjectsDirs: [String]
 
-    init() {
-        self.claudeProjectsDirs = TokenTracker.primaryProjectDirs()
+    init(authManager: AuthManager? = nil) {
+        if let auth = authManager {
+            self.claudeProjectsDirs = TokenTracker.projectDirsForCurrentUser(auth: auth)
+        } else {
+            self.claudeProjectsDirs = TokenTracker.primaryProjectDirs()
+        }
     }
 
     /// 주 계정 (~/.claude/projects) 만 반환.
@@ -68,6 +72,63 @@ class TokenTracker {
                 found.append(projectsPath)
             }
         }
+        return found
+    }
+
+    /// Phase 2.3: 로그인 이메일과 일치하는 `.claude*` 폴더의 projects만 반환.
+    /// 각 폴더의 .claude.json에서 이메일을 읽어 필터링.
+    static func projectDirsForCurrentUser(auth: AuthManager) -> [String] {
+        guard let currentEmail = auth.currentUserEmail else {
+            NSLog("[TokenPals] 로그인 이메일 없음 — primaryProjectDirs() fallback")
+            return primaryProjectDirs()
+        }
+
+        let home = NSHomeDirectory()
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(atPath: home) else {
+            NSLog("[TokenPals] 홈 디렉토리 읽기 실패")
+            return primaryProjectDirs()
+        }
+
+        var found: [String] = []
+        for entry in entries {
+            guard entry.hasPrefix(".claude") else { continue }
+
+            let claudePath = "\(home)/\(entry)"
+            let jsonPath = "\(claudePath)/.claude.json"
+            let projectsPath = "\(claudePath)/projects"
+
+            // .claude.json에서 이메일 추출
+            guard let jsonData = fm.contents(atPath: jsonPath),
+                  let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                  let oauth = json["oauthAccount"] as? [String: Any],
+                  let email = oauth["emailAddress"] as? String else {
+                continue
+            }
+
+            // 이메일 일치 확인
+            guard email == currentEmail else {
+                NSLog("[TokenPals] 계정 불일치: \(entry) → \(email) (현재: \(currentEmail))")
+                continue
+            }
+
+            // projects 디렉토리 존재 확인
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: projectsPath, isDirectory: &isDir), isDir.boolValue else {
+                continue
+            }
+
+            found.append(projectsPath)
+            NSLog("[TokenPals] 추적 폴더 추가: \(entry) → \(email)")
+        }
+
+        // 일치하는 폴더가 없으면 primaryProjectDirs() fallback
+        if found.isEmpty {
+            NSLog("[TokenPals] 일치하는 폴더 없음 — primaryProjectDirs() fallback")
+            return primaryProjectDirs()
+        }
+
+        NSLog("[TokenPals] 최종 추적 폴더: \(found)")
         return found
     }
 

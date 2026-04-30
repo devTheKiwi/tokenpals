@@ -13,28 +13,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var settingsWindow: SettingsWindow?
     var supabase: SupabaseService!
     var auth: AuthManager!
+    var deviceManager: DeviceManager!
+    var deviceInfo: LocalDeviceInfo?
     var signInWindow: SignInWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Settings.registerDefaults()
         setupStatusBar()
         setupRoom()
-        setupUsageEngine()
         setupNotifications()
-        setupSupabase()
+        setupSupabase()  // auth 먼저 초기화 (setupUsageEngine 이전)
+        setupUsageEngine()
     }
 
     private func setupSupabase() {
         supabase = SupabaseService()
         auth = AuthManager(client: supabase.client)
+        deviceManager = DeviceManager(client: supabase.client)
         NSLog("[TokenPals] Supabase 클라이언트 초기화 — \(SupabaseConfig.url)")
-        // 현재 세션 확인 (미로그인이면 nil)
+        // 현재 세션 확인 + 인증된 상태면 디바이스 등록
         Task {
             let email = await supabase.currentSessionEmail()
             NSLog("[TokenPals] 현재 세션: \(email ?? "(미로그인)")")
             await MainActor.run {
                 self.rebuildStatusMenu()
             }
+            if email != nil {
+                await self.ensureDeviceRegistration()
+            }
+        }
+    }
+
+    /// 로그인된 상태에서 호출. account/device를 보장.
+    private func ensureDeviceRegistration() async {
+        do {
+            let info = try await deviceManager.ensureSetup()
+            await MainActor.run {
+                self.deviceInfo = info
+                NSLog("[TokenPals] 디바이스 등록: \(info.name) (id=\(info.id), account=\(info.accountId))")
+            }
+        } catch {
+            NSLog("[TokenPals] 디바이스 등록 실패: \(error.localizedDescription)")
         }
     }
 
@@ -225,7 +244,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Usage Engine
 
     private func setupUsageEngine() {
-        tokenTracker = TokenTracker()
+        tokenTracker = TokenTracker(authManager: auth)
         usageEngine = UsageEngine(tokenTracker: tokenTracker)
         usageEngine.onUpdate = { [weak self] summary in
             self?.handleUsageUpdate(summary)
@@ -291,6 +310,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             win.onSuccess = { [weak self] in
                 NSLog("[TokenPals] 로그인 성공: \(self?.auth?.currentUserEmail ?? "?")")
                 self?.rebuildStatusMenu()
+                // 로그인 성공시 자동으로 디바이스 등록
+                Task { [weak self] in
+                    await self?.ensureDeviceRegistration()
+                }
             }
             signInWindow = win
         }

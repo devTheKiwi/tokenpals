@@ -5,9 +5,10 @@
 | Phase | 상태 | 기간 | 목표 |
 |---|---|---|---|
 | **0. 셋업** | ✅ 완료 | 1일 | SPM, 메뉴바, 빈 방, 첫 픽셀 펫 |
-| **1. 단일 계정 단일 디바이스** | 🟡 진행중 | 1주 | 실 토큰 데이터 + mood + 설정 + 알림 |
+| **1. 단일 계정 단일 디바이스** | ✅ 완료 | 1주 | 실 토큰 데이터 + mood + 알림 + 설정 |
 | **1.5. 다듬기** | ⏸ 대기 | 1주 | 실시간 워처, 위젯, 말풍선, 깜빡 |
-| **2. 단일 계정 멀티 디바이스 (Supabase)** | ⏸ 대기 | 1주 | 동기화, 다른 머신과 합산 |
+| **2. 단일 계정 멀티 디바이스 (Supabase)** | 🟡 진행중 | 2~3일 | Email OTP 로그인 + 디바이스 등록 + DB 스키마 |
+| **2.4 Realtime 동기화** | ⏸ 대기 | 1주 | 다른 머신과 실시간 합산 |
 | **3. 멀티 계정 / 팀 / 방 꾸미기** | ⏸ 대기 | 2~3주 | 본인 다른 계정, 동료 초대, 가구·존 |
 
 ## Phase 0: 개발 환경 셋업 ✅ 완료
@@ -90,21 +91,34 @@
   - 새벽 어두침 / 오후 햇살 (배경 그라데이션 변화)
 - [ ] **시스템 모션 감도 대응** (`accessibilityShouldReduceMotion`)
 
-## Phase 2: 단일 계정 멀티 디바이스 (Supabase) ⏸ 대기
+## Phase 2: 단일 계정 멀티 디바이스 (Supabase) 🟡 진행중
 
-### 사용자 작업 (10~15분, Phase 2 시작 전)
-- [ ] supabase.com 가입 (Github 로그인)
-- [ ] 새 프로젝트 생성 (Tokyo 지역 추천)
-- [ ] DB 비밀번호 설정
-- [ ] Project URL + anon key 알려주기
+### Phase 2.1: Supabase 클라이언트 통합 ✅ 완료
 
-### 코드 작업
+- [x] **Supabase Swift SDK 통합** (`supabase-swift`)
+- [x] **클라이언트 초기화** (URL + Publishable Key)
+- [x] **세션 상태 확인** (`currentSessionEmail()`)
 
-- [ ] **Supabase Swift SDK 통합** (`supabase-swift`)
-- [ ] **로그인 화면** (Google OAuth via Supabase Auth)
+### Phase 2.2: Email OTP 로그인 ✅ 완료
+
+- [x] **SignInWindow UI** (2-step: 이메일 → 6자리 코드)
+- [x] **AuthManager** (`sendOTP` / `verifyOTP` / `signOut`)
+- [x] **로컬 세션 저장** (Keychain via Supabase SDK)
+- [x] **메뉴바 로그인/로그아웃 표시**
+
+### Phase 2.3: 디바이스 등록 + DB 스키마 ✅ 거의 완료
+
+- [x] **DB 마이그레이션** (`supabase/migrations/0001_initial_schema.sql`)
+  - accounts, account_links, devices, sessions, turns, device_status
+  - RLS 정책 포함
+- [x] **DeviceManager** (첫 실행시 account + device 자동 생성)
+- [x] **Models.swift** (Supabase 테이블 Codable 매핑)
+- [x] **AppDelegate 통합** (로그인 → 자동 디바이스 등록)
+- [ ] **Supabase 마이그레이션 수동 실행** ← 다음 스텝 (사용자 액션)
+
+### Phase 2.4: Realtime 동기화 ⏸ 대기
+
 - [ ] **로컬 SQLite 셋업** (`GRDB.swift`)
-- [ ] **기본 스키마 마이그레이션** (Supabase + 로컬 동시)
-- [ ] **디바이스 등록 플로우** (첫 실행시 이름/색상 선택, hostname 자동 추천)
 - [ ] **동기화 큐** (오프라인 대비, 큐 → 백그라운드 워커)
 - [ ] **Supabase Realtime 구독** (다른 디바이스 새 turn → 즉시 UI 갱신)
 - [ ] **multi-pet UI** (방에 디바이스마다 1마리, 같은 계정 공유)
@@ -184,9 +198,18 @@
 - ✅ ClaudePet과의 차별화 충분한가?
 - ✅ 픽셀 테마 일관성 유지중인가?
 
-## 진행 로그 (Phase 0+1 요약)
+## 진행 로그
 
+### Phase 0 + 1
 - 2026-04-29 Phase 0 시작 — 기획 문서 7개 작성, 컨셉 결정
 - 2026-04-30 Phase 0 완료 — SPM + 픽셀 공 + 빈 방 동작
 - 2026-04-30 Phase 1 일부 — 실 토큰 데이터, mood, 호버 툴팁, 메뉴 요약
+- 2026-04-30 Phase 1 완료 — FSEvents, 말풍선, 눈 깜빡, 알림 + 설정
 - 2026-04-30 단일 계정(`~/.claude/`) 모델로 정착 — 멀티 계정은 Phase 3+
+
+### Phase 2
+- 2026-04-30 Phase 2.1 완료 — Supabase SDK 통합, 클라이언트 초기화
+- 2026-04-30 Phase 2.2 완료 — Email OTP 로그인 (SignInWindow + AuthManager)
+- 2026-04-30 Phase 2.3 구현 완료 — DeviceManager + DB 스키마 (RLS 포함)
+  - 마이그레이션 파일 준비 (수동 실행 대기)
+  - 다음: Supabase Dashboard에서 마이그레이션 실행 후 Phase 2.4로

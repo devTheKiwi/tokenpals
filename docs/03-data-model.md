@@ -37,10 +37,9 @@ achievements ─< user_achievements
 CREATE TABLE accounts (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     label           TEXT NOT NULL,         -- "메인", "사이드프로젝트" 등 사용자 지정
-    color_hex       TEXT NOT NULL,         -- 시각화용 색상 (#FFB6C1 같은)
+    color_hex       TEXT,                  -- 시각화용 색상 (#FFB6C1 같은)
     config_dir_hint TEXT,                  -- ".claude-alt" 같은 힌트
-    email           TEXT,                  -- Claude Code OAuth 이메일 (선택)
-    created_at      TIMESTAMPTZ DEFAULT now()
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
