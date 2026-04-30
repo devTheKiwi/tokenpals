@@ -55,7 +55,22 @@ success "저장소 다운로드 완료: $REPO_DIR"
 
 # 4. Swift 빌드
 info "4️⃣  Swift 빌드 중... (1~2분 소요)"
-swift build -c release 2>&1 | grep -E "error:|Build complete" || true
+echo ""
+
+# 실시간 프로그레스 표시
+swift build -c release 2>&1 | while IFS= read -r line; do
+    # 진행 중인 부분 하이라이트
+    if echo "$line" | grep -qE "Compiling|Linking|Build complete"; then
+        echo -e "${YELLOW}$line${NC}"
+    elif echo "$line" | grep -q "error:"; then
+        echo -e "${RED}$line${NC}"
+    else
+        echo "$line"
+    fi
+done
+
+echo ""
+
 if [ ! -f ".build/release/TokenPals" ]; then
     error "빌드 실패 — Swift 설치 확인"
 fi
