@@ -1,0 +1,97 @@
+#!/bin/bash
+# TokenPals 자동 설치 스크립트
+# 사용법: curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/tokenpals/main/install.sh | bash
+
+set -e
+
+echo "🐾 TokenPals 설치 시작..."
+
+# 색상 정의
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# 함수: 성공 메시지
+success() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+# 함수: 오류 메시지
+error() {
+    echo -e "${RED}✗${NC} $1"
+    exit 1
+}
+
+# 함수: 정보 메시지
+info() {
+    echo -e "${YELLOW}→${NC} $1"
+}
+
+# 1. 기존 앱 제거
+info "1️⃣  기존 TokenPals 종료 중..."
+killall TokenPals 2>/dev/null || true
+sleep 1
+
+info "기존 앱 제거 중..."
+rm -rf ~/Applications/TokenPals.app 2>/dev/null || true
+rm -rf /Applications/TokenPals.app 2>/dev/null || true
+success "기존 앱 제거 완료"
+
+# 2. 설정 초기화
+info "2️⃣  설정 초기화 중..."
+security delete-generic-password -a TokenPals 2>/dev/null || true
+defaults delete com.tokenpals 2>/dev/null || true
+rm -rf ~/.tokenpals 2>/dev/null || true
+success "설정 초기화 완료"
+
+# 3. 저장소 확인/준비
+info "3️⃣  저장소 준비 중..."
+REPO_DIR="${HOME}/tokenpals"
+if [ ! -d "$REPO_DIR/.git" ]; then
+    info "저장소를 $REPO_DIR 에 클론 중..."
+    rm -rf "$REPO_DIR" 2>/dev/null || true
+    git clone https://github.com/sungrangkim/tokenpals.git "$REPO_DIR" || error "저장소 클론 실패"
+else
+    info "기존 저장소 업데이트 중..."
+    cd "$REPO_DIR"
+    git fetch origin
+    git checkout main
+    git pull origin main || error "업데이트 실패"
+fi
+cd "$REPO_DIR"
+success "저장소 준비 완료"
+
+# 4. Swift 빌드
+info "4️⃣  Swift 빌드 중... (1~2분 소요)"
+swift build -c release 2>&1 | grep -E "error:|Build complete" || true
+if [ ! -f ".build/release/TokenPals" ]; then
+    error "빌드 실패 — Swift 설치 확인"
+fi
+success "빌드 완료"
+
+# 5. 앱 설치
+info "5️⃣  앱 설치 중..."
+mkdir -p /Applications
+cp -r "$REPO_DIR/.build/release/TokenPals" /Applications/TokenPals.app || error "설치 실패"
+chmod +x /Applications/TokenPals.app/Contents/MacOS/TokenPals
+success "앱 설치 완료: /Applications/TokenPals.app"
+
+# 6. 앱 실행
+info "6️⃣  TokenPals 시작 중..."
+open /Applications/TokenPals.app
+
+echo ""
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}🎉 TokenPals 설치 완료!${NC}"
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo "📝 다음 단계:"
+echo "  1. 메뉴바의 🥔 아이콘 클릭"
+echo "  2. '로그인...' 선택"
+echo "  3. 이메일 입력 → 6자리 코드 입력"
+echo "  4. 다른 디바이스에서도 같은 이메일로 로그인"
+echo "  5. 방에 각 디바이스의 펫이 나타남!"
+echo ""
+echo "💡 팁: Keychain 권한 요청 → 'Always Allow' 선택"
+echo ""
