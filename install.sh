@@ -78,17 +78,32 @@ success "빌드 완료"
 
 # 5. 앱 번들 생성 및 설치
 info "5️⃣  앱 설치 중..."
+
+# 빌드된 파일 확인
+BINARY="$REPO_DIR/.build/release/TokenPals"
+if [ ! -f "$BINARY" ]; then
+    error "빌드된 파일을 찾을 수 없음: $BINARY"
+fi
+
 mkdir -p /Applications
 
 # .app 번들 디렉토리 구조 생성
 APP_BUNDLE="/Applications/TokenPals.app"
 rm -rf "$APP_BUNDLE" 2>/dev/null || true
-mkdir -p "$APP_BUNDLE/Contents/MacOS"
-mkdir -p "$APP_BUNDLE/Contents/Resources"
+mkdir -p "$APP_BUNDLE/Contents/MacOS" || error "디렉토리 생성 실패"
+mkdir -p "$APP_BUNDLE/Contents/Resources" || error "디렉토리 생성 실패"
 
 # 실행 파일 복사
-cp "$REPO_DIR/.build/release/TokenPals" "$APP_BUNDLE/Contents/MacOS/TokenPals" || error "설치 실패"
-chmod +x "$APP_BUNDLE/Contents/MacOS/TokenPals"
+echo "  빌드된 파일: $BINARY"
+echo "  설치 대상: $APP_BUNDLE/Contents/MacOS/TokenPals"
+cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/TokenPals" || error "파일 복사 실패"
+
+# 권한 설정
+if [ -f "$APP_BUNDLE/Contents/MacOS/TokenPals" ]; then
+    chmod +x "$APP_BUNDLE/Contents/MacOS/TokenPals"
+else
+    error "복사된 파일을 찾을 수 없음"
+fi
 
 # Info.plist 생성
 cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLIST'
