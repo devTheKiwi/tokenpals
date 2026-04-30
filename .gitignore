@@ -29,5 +29,6 @@ Package.resolved
 *.cer
 GoogleService-Info.plist
 
-# Supabase 로컬 설정 (URL/key 하드코딩됨, 공개 X)
-Sources/TokenPals/SupabaseConfig.swift
+# Supabase 설정 — 이제 git에 추가됨 (Anon Key는 RLS로 보호)
+# (아래 주석 처리)
+# Sources/TokenPals/SupabaseConfig.swift
