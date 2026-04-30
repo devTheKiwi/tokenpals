@@ -9,16 +9,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var usageEngine: UsageEngine!
     var fileWatcher: FileWatcher?
     var pet: PetActor!
+    var notificationManager: NotificationManager!
+    var settingsWindow: SettingsWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Settings.registerDefaults()
         setupStatusBar()
         setupRoom()
         setupUsageEngine()
+        setupNotifications()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         fileWatcher?.stop()
         usageEngine?.stop()
+    }
+
+    private func setupNotifications() {
+        notificationManager = NotificationManager()
+        notificationManager.requestAuthorization()
     }
 
     // MARK: - Menu Bar
@@ -101,6 +110,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
+        // 설정
+        let settingsItem = NSMenuItem(
+            title: L10n.isKorean ? "설정..." : "Settings...",
+            action: #selector(openSettings),
+            keyEquivalent: ","
+        )
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         let quit = NSMenuItem(title: L10n.menuQuit, action: #selector(quitApp), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
@@ -145,9 +165,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupRoom() {
         roomWindow = RoomWindow()
 
+        // 핀 기본값 적용
+        if UserDefaults.standard.bool(forKey: SettingsKey.pinDefault) {
+            roomWindow.setPinned(true)
+        }
+
         // 현재 머신을 대표하는 단일 펫.
         let name = Host.current().localizedName ?? (L10n.isKorean ? "이 맥" : "This Mac")
-        // 호스트네임 해시 → 6색 중 하나로 (확정적)
         let colorIndex = abs(name.utf8.reduce(0) { Int($0) + Int($1) }) % PetColor.palette.count
         pet = roomWindow.roomView.addPet(color: PetColor.palette[colorIndex], name: name)
 
@@ -180,6 +204,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         pet?.summary = summary // PetActor가 mood/tooltip 자동 갱신
         updateStatusBarTitle(with: summary)
         rebuildStatusMenu()
+        notificationManager?.handleUsageUpdate(summary)
     }
 
     // MARK: - Actions
@@ -202,6 +227,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func refreshUsage() {
         usageEngine?.refresh()
+    }
+
+    @objc private func openSettings() {
+        if settingsWindow == nil {
+            let win = SettingsWindow()
+            win.onChange = { [weak self] in
+                // 설정 변경시 mood 즉시 재계산 (5h budget 변경 등)
+                self?.usageEngine?.refresh()
+            }
+            settingsWindow = win
+        }
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func quitApp() {
