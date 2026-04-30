@@ -69,8 +69,17 @@ class PetActor: NSView {
     var onClicked: (() -> Void)?
     var onDoubleClicked: (() -> Void)?
 
-    // MARK: - Tooltip / Tracking
+    // MARK: - Blink
 
+    /// 다음 깜빡 frame (`animationFrame >= nextBlinkFrame` 이면 깜빡 시작)
+    private var nextBlinkFrame: Int = 75   // ~5s @ 15fps
+    /// 깜빡 종료 frame (그 frame까진 눈 감음)
+    private var blinkUntilFrame: Int = -1
+
+    // MARK: - Speech / Tooltip / Tracking
+
+    private var speechBubble: SpeechBubble?
+    private var randomMessageTimer: Timer?
     private var trackingArea: NSTrackingArea?
     private var tooltip: UsageTooltip?
 
@@ -115,8 +124,10 @@ class PetActor: NSView {
 
     override func mouseDown(with event: NSEvent) {
         if event.clickCount == 2 {
+            showSpeech(L10n.doubleClick)
             onDoubleClicked?()
         } else {
+            showRandomClickMessage()
             onClicked?()
         }
     }
@@ -201,15 +212,18 @@ class PetActor: NSView {
             self?.tick()
         }
         scheduleNextBehavior()
+        scheduleNextRandomMessage()
     }
 
     func stopAnimating() {
         animationTimer?.invalidate()
         behaviorTimer?.invalidate()
         stateTimer?.invalidate()
+        randomMessageTimer?.invalidate()
         animationTimer = nil
         behaviorTimer = nil
         stateTimer = nil
+        randomMessageTimer = nil
     }
 
     func setState(_ newState: PetState) {
@@ -296,8 +310,16 @@ class PetActor: NSView {
         if state == .walking {
             stepTowardTarget()
         }
-        // 툴팁 위치 갱신 (펫이 움직일 때 따라가게)
+        // 깜빡 스케줄
+        if animationFrame >= nextBlinkFrame && state != .happy && mood != .sleepy {
+            blinkUntilFrame = animationFrame + 2 // 2 프레임 눈 감음 (~133ms)
+            nextBlinkFrame = animationFrame + Int.random(in: 75...150) // 5~10s 후 다음
+        }
+        // 툴팁/말풍선 위치 갱신 (펫이 움직이면 따라옴)
         if let tt = tooltip { positionTooltip(tt) }
+        if let bubble = speechBubble, bubble.superview != nil {
+            positionBubble(bubble)
+        }
         needsDisplay = true
     }
 
@@ -450,7 +472,8 @@ class PetActor: NSView {
         drawPx(2, 6, blushColor)
         drawPx(9, 6, blushColor)
 
-        // 눈 우선순위: state.happy > mood.sleepy > 기본
+        // 눈 우선순위: state.happy > mood.sleepy > blink > 기본
+        let isBlinking = animationFrame <= blinkUntilFrame
         if state == .happy {
             // ^^ 양쪽
             drawPx(3, 4, eyeColor)
@@ -459,7 +482,7 @@ class PetActor: NSView {
             drawPx(8, 4, eyeColor)
             drawPx(7, 5, eyeColor)
             drawPx(9, 5, eyeColor)
-        } else if mood == .sleepy {
+        } else if mood == .sleepy || isBlinking {
             // 감은 눈 (3px 가로선 양쪽)
             drawPx(2, 4, eyeColor); drawPx(3, 4, eyeColor); drawPx(4, 4, eyeColor)
             drawPx(7, 4, eyeColor); drawPx(8, 4, eyeColor); drawPx(9, 4, eyeColor)
@@ -502,5 +525,64 @@ class PetActor: NSView {
         let path = NSBezierPath(rect: pathRect)
         path.lineWidth = 2
         path.stroke()
+    }
+
+    // MARK: - Speech Bubble
+
+    /// 말풍선 표시. 매번 새 SpeechBubble 만들고 기존 건 제거.
+    private func showSpeech(_ text: String) {
+        guard let parent = superview else { return }
+        speechBubble?.removeFromSuperview()
+        let bubble = SpeechBubble()
+        parent.addSubview(bubble)
+        bubble.show(text)
+        positionBubble(bubble)
+        speechBubble = bubble
+    }
+
+    private func positionBubble(_ bubble: SpeechBubble) {
+        let petFrame = self.frame
+        var x = petFrame.midX - bubble.frame.width / 2
+        var y = petFrame.maxY + 2
+
+        if let parent = superview {
+            let pb = parent.bounds
+            x = max(pb.minX + 2, min(pb.maxX - bubble.frame.width - 2, x))
+            // 위 공간 부족시 펫 아래로 (포인터는 위 향하게 — 단순화: 그래도 위 두기)
+            if y + bubble.frame.height > pb.maxY - 2 {
+                y = max(pb.minY + 2, petFrame.minY - bubble.frame.height - 2)
+            }
+        }
+        bubble.frame.origin = NSPoint(x: x, y: y)
+    }
+
+    // MARK: - Random Messages
+
+    private func scheduleNextRandomMessage() {
+        randomMessageTimer?.invalidate()
+        let delay = TimeInterval.random(in: 45...90)
+        randomMessageTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            self?.showRandomMessage()
+            self?.scheduleNextRandomMessage()
+        }
+    }
+
+    private func showRandomMessage() {
+        // 자고 있거나 알람 상태에선 메시지 X
+        guard mood == .normal || mood == .working else { return }
+        // 이미 말풍선 떠있으면 스킵 (덮어쓰기 X)
+        if let bubble = speechBubble, bubble.superview != nil { return }
+
+        let messages = (mood == .working) ? L10n.workingMessages : L10n.idleMessages
+        if let msg = messages.randomElement() {
+            showSpeech(msg)
+        }
+    }
+
+    private func showRandomClickMessage() {
+        let messages: [String] = (mood == .working) ? L10n.clickWorking : L10n.clickIdle
+        if let msg = messages.randomElement() {
+            showSpeech(msg)
+        }
     }
 }
