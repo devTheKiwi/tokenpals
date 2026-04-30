@@ -10,6 +10,7 @@
 | **2. 단일 계정 멀티 디바이스 (Supabase)** | ✅ 완료 | 2~3일 | Email OTP 로그인 + 디바이스 등록 + DB 스키마 |
 | **2.4 Realtime 동기화 인프라** | ✅ 완료 | 1일 | DeviceStatusManager + SessionSyncManager + RealtimeManager |
 | **2.5 다중 디바이스 펫 UI** | ✅ 완료 | 1일 | 각 디바이스마다 펫 표시 + Realtime 무드 업데이트 |
+| **2.6 설치 자동화 + 설정 통합** | ✅ 완료 | 1일 | install.sh + SupabaseConfig git 추가 + 디바이스 유니크 제약 |
 | **3. 멀티 계정 / 팀 / 방 꾸미기** | ⏸ 대기 | 2~3주 | 본인 다른 계정, 동료 초대, 가구·존 |
 
 ## Phase 0: 개발 환경 셋업 ✅ 완료
@@ -134,6 +135,23 @@
 - [x] **다중 펫 UI** (방에 디바이스마다 1마리, 각자 색상/이름 유지)
 - [x] **Realtime 펫 업데이트** (다른 디바이스 mood 변화 → 해당 펫 상태 업데이트)
 
+### Phase 2.6: 설치 자동화 + 설정 통합 ✅ 완료
+
+- [x] **자동 설치 스크립트** (install.sh)
+  - 기존 앱 제거 + 설정 초기화
+  - 저장소 자동 다운로드
+  - Swift 빌드 + .app 번들 생성
+  - 빌드 진행상황 실시간 표시
+- [x] **Supabase 설정 git 통합** (SupabaseConfig.swift)
+  - .gitignore에서 제외 제거
+  - Anon Key는 공개 환경 안전 (RLS로 보호)
+  - 모든 사용자가 동일 설정으로 시작
+- [x] **디바이스 중복 생성 방지**
+  - devices 테이블에 (account_id, hostname) 유니크 제약
+  - 같은 디바이스는 로그아웃 후 재로그인해도 중복 안 됨
+- [x] **Keychain 권한 설명**
+  - 초기 로그인 시 Keychain 접근 → "Always Allow" 권장
+
 ### 종료 조건
 - 두 머신에서 같은 계정으로 로그인 → 자동 동기화
 - 한 머신 메뉴바 클릭 → 다른 머신 사용량까지 보임
@@ -222,7 +240,13 @@
 - 2026-04-30 Phase 2.2 완료 — Email OTP 로그인 (SignInWindow + AuthManager)
 - 2026-04-30 Phase 2.3 완료 — DeviceManager + DB 스키마 (RLS 포함)
   - Supabase 마이그레이션 실행 완료
-- 2026-04-30 Phase 2.3 추가 — 이메일 필터링 (여러 Claude 계정 폴더 중 매칭 폴더만 추적)
+  - 이메일 필터링 추가 (여러 Claude 계정 폴더 중 매칭 폴더만 추적)
 - 2026-04-30 Phase 2.4 완료 — DeviceStatusManager, SessionSyncManager, RealtimeManager 구현
+  - 30sec heartbeat, 60sec JSONL 동기화, Realtime 구독 기본 인프라
 - 2026-04-30 Phase 2.5 완료 — 다중 디바이스 펫 UI (각 디바이스마다 펫 표시)
-  - 다음: Keychain 호출 최소화, Realtime API 완전 구현
+  - PetActor deviceId 지원, 모든 디바이스의 펫 자동 생성, Realtime 무드 업데이트
+- 2026-04-30 Phase 2.6 완료 — 설치 자동화 + 설정 통합
+  - install.sh 스크립트 (한 줄 명령어로 설치)
+  - SupabaseConfig.swift git 추가 (Anon Key는 RLS로 보호)
+  - devices 테이블 유니크 제약 추가 (디바이스 중복 생성 방지)
+  - 다음: Realtime API 완전 구현, Phase 3 멀티 계정/팀
