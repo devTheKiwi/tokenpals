@@ -11,6 +11,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var pet: PetActor!
     var notificationManager: NotificationManager!
     var settingsWindow: SettingsWindow?
+    var supabase: SupabaseService!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Settings.registerDefaults()
@@ -18,6 +19,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupRoom()
         setupUsageEngine()
         setupNotifications()
+        setupSupabase()
+    }
+
+    private func setupSupabase() {
+        supabase = SupabaseService()
+        NSLog("[TokenPals] Supabase 클라이언트 초기화 — \(SupabaseConfig.url)")
+        // 현재 세션 확인 (미로그인이면 nil)
+        Task {
+            let email = await supabase.currentSessionEmail()
+            NSLog("[TokenPals] 현재 세션: \(email ?? "(미로그인)")")
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
