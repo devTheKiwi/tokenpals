@@ -15,6 +15,10 @@ class SupabaseService {
             supabaseURL: url,
             supabaseKey: SupabaseConfig.publishableKey
         )
+        // Phase 2.5: Keychain 권한
+        // Supabase SDK가 세션 저장/복원 시 Keychain을 사용합니다.
+        // 처음 실행 시 "Allow/Don't Allow" 대화가 나타납니다.
+        // 보안을 위해 macOS가 권장합니다. "Always Allow" 선택 권장.
     }
 
     /// 연결 검증용 — 인증 상태 확인. 미로그인이면 nil 반환.
