@@ -1,6 +1,6 @@
 #!/bin/bash
 # TokenPals 자동 설치 스크립트
-# 사용법: curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/tokenpals/main/install.sh | bash
+# 사용법: bash <(curl -fsSL https://raw.githubusercontent.com/devTheKiwi/tokenpals/main/install.sh)
 
 set -e
 
@@ -36,7 +36,7 @@ sleep 1
 info "기존 앱 제거 중..."
 rm -rf ~/Applications/TokenPals.app 2>/dev/null || true
 rm -rf /Applications/TokenPals.app 2>/dev/null || true
-success "기존 앱 제거 완료"
+success "기존 앱 제제 완료"
 
 # 2. 설정 초기화
 info "2️⃣  설정 초기화 중..."
@@ -45,22 +45,13 @@ defaults delete com.tokenpals 2>/dev/null || true
 rm -rf ~/.tokenpals 2>/dev/null || true
 success "설정 초기화 완료"
 
-# 3. 저장소 확인/준비
-info "3️⃣  저장소 준비 중..."
+# 3. 저장소 다운로드
+info "3️⃣  저장소 다운로드 중..."
 REPO_DIR="${HOME}/tokenpals"
-if [ ! -d "$REPO_DIR/.git" ]; then
-    info "저장소를 $REPO_DIR 에 클론 중..."
-    rm -rf "$REPO_DIR" 2>/dev/null || true
-    git clone https://github.com/devTheKiwi/tokenpals.git "$REPO_DIR" || error "저장소 클론 실패"
-else
-    info "기존 저장소 업데이트 중..."
-    cd "$REPO_DIR"
-    git fetch origin
-    git checkout main
-    git pull origin main || error "업데이트 실패"
-fi
+rm -rf "$REPO_DIR" 2>/dev/null || true
+git clone https://github.com/devTheKiwi/tokenpals.git "$REPO_DIR" || error "저장소 클론 실패"
 cd "$REPO_DIR"
-success "저장소 준비 완료"
+success "저장소 다운로드 완료: $REPO_DIR"
 
 # 4. Swift 빌드
 info "4️⃣  Swift 빌드 중... (1~2분 소요)"
@@ -85,6 +76,8 @@ echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}🎉 TokenPals 설치 완료!${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo "📂 저장소 위치: ~/tokenpals"
 echo ""
 echo "📝 다음 단계:"
 echo "  1. 메뉴바의 🥔 아이콘 클릭"
