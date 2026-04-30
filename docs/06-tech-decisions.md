@@ -162,19 +162,50 @@ Claude Code 사용량을 어떻게 수집할 것인가.
 
 ---
 
-## ADR-006: 캐릭터는 NSBezierPath 직접 드로잉 (ClaudePet 패턴) ⚠️ 갱신
+## ADR-006: 캐릭터는 픽셀 아트 공 (12×12 sprite) ⚠️ 재갱신
 
 ### 맥락
-귀여운 캐릭터 표현. ClaudePet은 이미 NSBezierPath로 감자형 캐릭터를 그림.
+귀여운 캐릭터 표현. ClaudePet은 NSBezierPath 벡터 감자형이지만, TokenPals는 차별화 + 다마고치 컨셉으로 **픽셀 아트** 채택.
+
+### 변경 이력
+- 2026-04-29: 이모지 → NSBezierPath 벡터 (ClaudePet 차용)
+- 2026-04-30: NSBezierPath 벡터 → **픽셀 아트** (사용자 피드백: "ClaudePet과 비슷해서 토큰팔 스타일 원함, 2D 픽셀 펫 어떨까")
+- 2026-04-30: 슬라임 → 둥근 공 (사용자 피드백: "슬라임 약간 징그러움")
 
 ### 옵션
-- A) **NSBezierPath 직접 드로잉** (ClaudePet 차용)
+- A) NSBezierPath 벡터
 - B) Apple Color Emoji
 - C) 커스텀 일러스트 PNG/SVG
-- D) Lottie 애니메이션 에셋
+- D) **픽셀 아트 (코드 내 픽셀 데이터)** ⭐ 채택
+- E) Lottie 애니메이션 에셋
 
 ### 선택
-**A로 시작** (ClaudePet의 PetView 차용) → Phase 3에 D(Lottie) 검토.
+**D — 12×12 픽셀 데이터 + 5배 스케일 + NSGraphicsContext.shouldAntialias = false**
+
+### 디자인 특징 (실 구현)
+
+- 12×12 픽셀 둥근 공 (light 광택 픽셀 포함)
+- 6색 팔레트 (디바이스 해시 → 결정적 색상)
+- 얼굴은 sprite 위 동적 오버레이:
+  - 기본 눈: 1px 도트 양쪽
+  - happy 클릭: ^^ (apex + base 2px)
+  - sleepy mood: 3px 가로선 (감은 눈)
+  - ㅅ 입 (3px) — 항상 표시
+  - 핑크 볼터치 (반투명 1px) — 항상 표시
+- 스쿼시/스트레치 X (사용자 피드백: 흐믈거림 제거)
+- 통통 위아래 바운스만
+
+### 근거
+- ClaudePet과 시각언어 자체가 다름 → 비교 불가, 차별화 명확
+- 다마고치 본가 = 픽셀 아트, 토큰=디지털=픽셀 메타포 일치
+- 작은 캔버스라 색별 변형도 빠름
+- 외부 에셋 0, 코드만으로 끝
+- 안티앨리어싱 끔으로 또렷한 픽셀 경계
+- macOS 다크/라이트 자동 대응
+
+### 대가
+- 정교한 일러스트급 캐릭터는 한계 → Phase 3에서 일러스트/스프라이트 시트로 확장 가능
+- 픽셀 데이터 직접 작성은 손이 가지만 12×12라 부담 적음
 
 ### 근거
 - ClaudePet의 검증된 드로잉 코드 (몸통 + 머리 + 발 + 눈 + 동공이 이동방향 따라감) 그대로 차용
@@ -220,7 +251,7 @@ Claude Code 사용량을 어떻게 수집할 것인가.
 
 ---
 
-## ADR-008: 멀티 `.claude*` 폴더 자동 감지
+## ADR-008: 멀티 `.claude*` 폴더 = Phase 3+ 멀티 계정 ⚠️ 갱신
 
 ### 맥락
 사용자가 여러 Claude 계정용으로 다음과 같은 폴더를 가질 수 있음:
@@ -230,22 +261,24 @@ Claude Code 사용량을 어떻게 수집할 것인가.
 - `~/.claude-other/`
 - `~/.claude_alt/`
 
+### 변경 이력
+- 2026-04-29: 자동 탐색 + 사용자 매핑 UI (Phase 1)
+- 2026-04-30: **Phase 1은 `~/.claude/` 단일 폴더만 추적**, 멀티 계정은 Phase 3+로 연기 (사용자 결정: "단일 계정만 먼저 완성하고 나중에 확장")
+
 ### 결정
-첫 실행시 **자동 탐색** + 사용자 매핑 확인 UI.
-
+**Phase 1**: `~/.claude/projects` 만 추적. 다른 `.claude*` 폴더는 무시.
+**Phase 3+**: 사용자가 설정 UI에서 명시적으로 추가:
 ```
-"이 디바이스에서 다음 Claude 폴더를 찾았어요!"
-  ┌─────────────────────────────────┐
-  │ ☑ .claude          → 메인 계정  │
-  │ ☑ .claude-alt      → 메인 계정  │
-  │ ☑ .claude-account2 → 사이드     │
-  │ ☐ .claude-other    → 무시       │
-  └─────────────────────────────────┘
+"계정 추가" 클릭 → 폴더 선택 → 라벨 (예: "사이드", "회사") → 새 account 레코드 생성
 ```
 
-각 폴더가 어떤 account에 매핑되는지 사용자가 결정.
+### 코드 상태
+- `TokenTracker.primaryProjectDirs()` (현재 사용) — `~/.claude/projects` 만 반환
+- `TokenTracker.discoverClaudeProjectDirs()` (보관, 미사용) — 글로빙 패턴, Phase 3에서 부활
 
-> 참고: ClaudePet의 `TokenTracker.swift`는 `~/.claude/projects` 단일 폴더만 봄. TokenPals는 이를 확장해서 글로빙(`~/.claude*/projects`) 패턴으로 처리.
+### 근거
+- 멀티 계정은 UI/Auth/RLS 모두 복잡 → Phase 1에서 떼어놓고 단일 계정 완성
+- 단일 계정 흐름 검증 후 자연스럽게 멀티로 확장
 
 ---
 
@@ -324,6 +357,92 @@ Claude Code 사용량을 어떻게 수집할 것인가.
 ### 운영 원칙
 - ClaudePet은 별도 프로젝트로 계속 운영. TokenPals는 동일 사용자(devTheKiwi)의 별도 진화형
 - ClaudePet의 버그 수정/개선은 가능한 양방향 동기화 (단방향 의존 X)
+
+---
+
+## ADR-011: Identity = TokenPals 로그인, Claude 계정 자동감지 X (NEW)
+
+### 맥락
+멀티 디바이스에서 "이 디바이스가 어느 사용자/계정 거인지" 식별 필요.
+
+### 옵션
+- A) `~/.claude/.credentials.json` 또는 Keychain에서 Claude OAuth 정보 추출
+- B) **TokenPals 자체 로그인** (Supabase Auth via Google OAuth) ⭐ 채택
+- C) 디바이스 UUID + 사용자 입력 매핑
+
+### 선택
+**B — Supabase Auth via Google OAuth**
+
+### 근거
+- Claude Code 내부 인증 포맷 의존 X (안정성)
+- OAuth 토큰 등 민감 정보 다루지 않음 (보안)
+- 같은 사람이 여러 머신에서 같은 Google 계정으로 로그인 → 자동 매칭
+- Supabase RLS와 자연스럽게 연동
+- 사용자 명시적 동의 (로그인 = 의도)
+
+### 가정과 한계
+- **Phase 1 가정**: 사용자가 자기 모든 머신에서 같은 Claude 계정 사용
+- 가정 깨지는 케이스 (같은 TokenPals 사용자가 머신마다 다른 Claude 계정) → Phase 3+ 멀티 계정에서 명시 매핑으로 해결
+- Phase 3+ 옵션: `.credentials.json` 이메일 해시 추출 → 디바이스간 비교 → 불일치시 경고 (지금은 과한 엔지니어링)
+
+---
+
+## ADR-012: Pet = 디바이스 1대 (계정 컨텍스트 안에서) (NEW)
+
+### 맥락
+"펫이 무엇을 표현하는가?" 결정.
+
+### 옵션
+- A) Pet = 물리적 디바이스 (Mac 한 대 = 펫 1마리)
+- B) Pet = Claude 계정 (계정 = 펫 1마리, 디바이스 무관)
+- C) **Pet = (account, device) 튜플** ⭐ 채택
+  - 같은 계정의 다른 머신 = 별개 펫 (같은 색상, 다른 라벨)
+  - 다른 계정 = 다른 펫 그룹/방
+
+### 선택
+**C — Pet은 디바이스를 표현하되, 계정 컨텍스트 안에서**
+
+### 근거
+- 계정마다 5h/주간 한도 별개 → 계정 단위 분리 필수
+- 같은 계정의 디바이스들은 한 방에 같이 있는 게 자연스러움 (방 = 계정)
+- Phase 1: 1 계정 + 1 디바이스 = 1 펫
+- Phase 2: 1 계정 + N 디바이스 = N 펫 (한 방)
+- Phase 3+: M 계정 + N 디바이스 = 별도 방 또는 그룹화
+
+### Phase별 적용
+
+| Phase | 계정 | 디바이스 | 펫 (총) | 방 |
+|---|---|---|---|---|
+| **1** | 1 | 1 | 1 | 1 |
+| **2** | 1 | N | N | 1 |
+| **3+** | M | N | M×N | M (또는 1 + 색상 구분) |
+
+---
+
+## ADR-013: 5h 한도 = billable tokens (캐시 read 제외) (NEW)
+
+### 맥락
+mood 임계치(alarm) 계산 기준. 초기에 `totalTokens`로 했는데 캐시 read 무게를 너무 크게 차지 (예: 사용자 5h 100M tokens, 96% 캐시 → 실제 소비는 4M).
+
+### 변경 이력
+- 2026-04-30: total → **billable** 로 변경 (사용자 데이터 기반)
+
+### 결정
+**Mood 계산은 `billableTokens = input + output + cache_creation` (cache_read 제외)**
+
+### 근거
+- Anthropic의 실제 rate limit과 가까움 (캐시 read는 90% 할인되고 거의 무료)
+- 캐시 적중률 높은 코드 작업이 부당하게 alarm 트리거되는 것 방지
+- 표시(menu/tooltip)는 `totalTokens` 그대로 (사용자가 보는 숫자는 청구 + 캐시 모두)
+
+### 임계치 (Phase 1 기본값)
+- `UsageSummary.fiveHourBudget = 20_000_000` (20M billable)
+- alarm: 5h billable ≥ 95% (= 19M)
+- UserDefaults 키 `tokenpals.fiveHourBudget`로 override 가능
+
+### 미래 고도화 (Phase 3+)
+- 사용자 과거 패턴 자동 학습 → 개인화된 한도 추정
+- Anthropic 공식 제한 변경 추적
 
 ---
 

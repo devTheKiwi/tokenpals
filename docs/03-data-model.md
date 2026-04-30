@@ -1,5 +1,20 @@
 # 03. 데이터 모델
 
+## 핵심 개념
+
+- **account**: Claude 계정 단위 (rate limit pool). Phase 1은 사용자당 1개 (`~/.claude/`).
+- **device**: 물리적 머신 (Mac 한 대). 한 account가 여러 device를 가질 수 있음.
+- **pet (시각화)**: 한 device를 표현하는 캐릭터. account 컨텍스트 안에서 살아있음.
+- **TokenPals user**: Supabase Auth로 로그인한 사람. Claude account와 별개.
+
+## Phase 별 적용 범위
+
+| Phase | TokenPals 사용자 | Account | Device | Pet |
+|---|---|---|---|---|
+| **1 (현재)** | 1 (나) | 1 (`~/.claude/`) | 1 (이 Mac) | 1 |
+| **2** | 1 (나) | 1 | N (내 머신들) | N |
+| **3+** | N (나 + 동료) | N (내 여러 계정 + 동료) | M | many |
+
 ## ERD (관계도)
 
 ```
@@ -122,20 +137,30 @@ CREATE INDEX idx_turns_session ON turns(session_id, turn_index);
 
 ```sql
 CREATE TABLE device_status (
-    device_id              UUID PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
-    mood                   TEXT NOT NULL,        -- "happy" | "working" | "sleepy" | "confused" | "stressed" | "danger" | "offline"
-    speech_bubble          TEXT,                  -- "지금 코딩중!"
-    current_session_id     UUID,
-    current_session_tokens BIGINT DEFAULT 0,
-    five_hour_used_tokens  BIGINT DEFAULT 0,
-    weekly_opus_tokens     BIGINT DEFAULT 0,
-    weekly_sonnet_tokens   BIGINT DEFAULT 0,
-    cache_hit_rate         REAL,                  -- 0.0 ~ 1.0
-    updated_at             TIMESTAMPTZ DEFAULT now()
+    device_id                  UUID PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+    mood                       TEXT NOT NULL,    -- "normal" | "working" | "sleepy" | "alarm" (실제 구현 기준)
+    speech_bubble              TEXT,
+    current_session_id         UUID,
+    current_session_tokens     BIGINT DEFAULT 0,
+    five_hour_total_tokens     BIGINT DEFAULT 0, -- 캐시 read 포함 (표시용)
+    five_hour_billable_tokens  BIGINT DEFAULT 0, -- 캐시 read 제외 (mood 계산용)
+    weekly_opus_tokens         BIGINT DEFAULT 0,
+    weekly_sonnet_tokens       BIGINT DEFAULT 0,
+    cache_hit_rate             REAL,             -- 0.0 ~ 1.0
+    updated_at                 TIMESTAMPTZ DEFAULT now()
 );
 ```
 
-`mood` 값은 캐릭터의 행동을 결정 (자세한 매핑은 [04-ui-and-characters.md](04-ui-and-characters.md) 참고).
+**mood 값** (실제 구현):
+- `normal`: 평소 (자유 산책)
+- `working`: 5분 내 활동 (스파클)
+- `sleepy`: 30분+ 유휴 (눈 감음)
+- `alarm`: 5h billable ≥ 95% of budget (빨간 글로우 + 흔들)
+
+**중요**: mood/한도 계산은 **billable tokens** (input + output + cache_creation, 즉 캐시 read 제외) 기준.
+캐시 read는 거의 무료라 5h 한도 추정에 부적절.
+
+자세한 매핑은 [04-ui-and-characters.md](04-ui-and-characters.md) 참고.
 
 ### achievements & user_achievements
 

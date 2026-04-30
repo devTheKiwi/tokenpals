@@ -49,22 +49,25 @@
 
 **대안 검토**: OTel은 멀티 사용자 SaaS 만들 때 다시 검토. 지금은 오버엔지니어링.
 
-### 결정 2: 여러 `.claude*` 폴더 모두 스캔
+### 결정 2: Phase 1은 `~/.claude/` 단일 폴더만 추적
 
 사용자 환경에 다음과 같은 디렉토리가 공존할 수 있음:
 ```
-~/.claude/
-~/.claude-alt/
-~/.claude-account2/
-~/.claude-other/
-~/.claude_alt/
+~/.claude/             ← Phase 1 추적 대상
+~/.claude-alt/         ← Phase 3+ (멀티 계정)
+~/.claude-account2/    ← Phase 3+
+~/.claude-other/       ← Phase 3+
+~/.claude_alt/         ← Phase 3+
 ```
 
-**전략**:
-- 첫 실행시 `~/.claude*` 패턴으로 모두 탐색
-- 각 폴더가 어떤 계정에 매핑되는지 사용자에게 확인
-- `config.json` 또는 keychain에서 계정 정보 추출 시도
-- 폴더별로 별도 워처 등록
+**Phase 1 전략 (현재)**:
+- `~/.claude/projects` 만 스캔 (단일 주 계정 가정)
+- 다른 `.claude*` 폴더는 무시 (멀티 계정 기능에서 다룸)
+
+**Phase 3+ 멀티 계정 확장 시**:
+- 첫 실행시 또는 설정에서 발견된 폴더 사용자에게 매핑 요청
+- "이 폴더는 어떤 계정으로 인식할지" 라벨링
+- 계정마다 별도 펫 그룹 (또는 별도 방)
 
 ### 결정 3: 로컬 SQLite + Supabase 이중화
 
@@ -139,6 +142,28 @@ character_mood = map(device_status)
 UI 갱신 (표정 + 말풍선 + 색상)
 ```
 
+## Identity 모델 (TokenPals 로그인 = 사용자 식별)
+
+**핵심 원칙**: TokenPals는 **TokenPals 로그인**으로 사용자를 식별한다. Claude Code의 내부 인증 정보(이메일/토큰 등)를 직접 읽지 않는다.
+
+```
+[Mac A]                       [Mac B]
+TokenPals 앱                   TokenPals 앱
+  ↓ Google OAuth                ↓ Google OAuth
+me@gmail.com                  me@gmail.com
+  ↓                             ↓
+같은 Supabase Auth user_id → 같은 사람으로 인식 → 데이터 합산
+```
+
+**왜 Claude 계정을 직접 감지하지 않나**:
+- Claude Code의 `~/.claude/.credentials.json` / Keychain 파싱은 내부 포맷 변경에 취약
+- OAuth 토큰 등 민감 정보 다루기 부담 (보안)
+- TokenPals 로그인이 더 깔끔하고 안정적
+
+**가정 (Phase 1)**: 사용자가 자기 모든 머신에서 같은 Claude 계정을 쓴다고 가정. 이 가정이 깨지는 케이스(같은 사용자가 머신마다 다른 Claude 계정 사용)는 Phase 3+에서 명시적 매핑 UI로 해결.
+
+**검증 강화 (Phase 3+ 옵션)**: `.credentials.json`에서 이메일 해시만 추출 → 디바이스간 비교 → 일치하지 않으면 경고. 지금은 과한 엔지니어링.
+
 ## 멀티 디바이스 동기화 모델
 
 ### 디바이스 등록 (최초 1회)
@@ -146,11 +171,11 @@ UI 갱신 (표정 + 말풍선 + 색상)
 ```
 앱 첫 실행
    ↓
-Google 로그인 → account_id 획득
+Google 로그인 → Supabase Auth user_id 획득
    ↓
 device_id = UUID 생성, Keychain에 저장
    ↓
-"이 디바이스 이름 + 캐릭터 선택"
+"이 디바이스 이름 + 캐릭터 선택" (옵션, 기본은 hostname + 색상 자동)
    ↓
 Supabase devices 테이블에 INSERT
 ```
@@ -167,25 +192,31 @@ Supabase devices 테이블에 INSERT
 - 모든 INSERT는 idempotent (`session_id + turn_index` 유니크 제약)
 - 네트워크 끊겼다 복구되면 큐에 쌓인 이벤트 재전송
 
-## 멀티 계정 모델 (Phase 2)
+## 멀티 계정 모델 (Phase 3+)
 
 ```
-Supabase Auth: 단일 사용자(나) 로그인
+Supabase Auth: TokenPals 사용자(나) 로그인
    ↓
 account_links 테이블:
   user_id (나의 Supabase user id)
-   ├─ account_a (내 메인 Claude 계정)
-   ├─ account_b (동료 1, 초대 수락시)
-   └─ account_c (동료 2, 초대 수락시)
+   ├─ account_a (내 메인 Claude 계정 = ~/.claude/)
+   ├─ account_b (내 사이드 계정 = ~/.claude-alt/) ← 본인이 추가
+   ├─ account_c (동료 1의 계정, 초대 수락시) ← 동료가 본인 데이터 공유
+   └─ account_d (동료 2의 계정, 초대 수락시)
    ↓
 Row Level Security:
   "나는 내가 권한 있는 account_id의 데이터만 read 가능"
 ```
 
-**동료 초대 흐름** (Phase 2):
-1. 동료가 TokenPals 설치
+**본인 멀티 계정 흐름** (Phase 3):
+1. 설정에서 "계정 추가" → 폴더 매핑 (`~/.claude-alt` → "사이드 계정")
+2. 새 account 레코드 생성, 내 user_id에 link
+3. 별도 펫 그룹/방으로 시각화
+
+**동료 초대 흐름** (Phase 3):
+1. 동료가 TokenPals 설치 + 자기 Google 로그인
 2. 동료의 앱이 자기 계정의 데이터를 자기 Supabase 영역에 저장
-3. 내가 동료에게 "팀 보기 권한" 요청
+3. 내가 동료에게 "팀 보기 권한" 요청 (초대 코드/링크)
 4. 동료가 승인하면 내 앱에서 그의 데이터 read 가능 (write는 절대 X)
 
 ## 보안 / 프라이버시
