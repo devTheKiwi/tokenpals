@@ -12,6 +12,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var notificationManager: NotificationManager!
     var settingsWindow: SettingsWindow?
     var supabase: SupabaseService!
+    var auth: AuthManager!
+    var signInWindow: SignInWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Settings.registerDefaults()
@@ -24,11 +26,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupSupabase() {
         supabase = SupabaseService()
+        auth = AuthManager(client: supabase.client)
         NSLog("[TokenPals] Supabase 클라이언트 초기화 — \(SupabaseConfig.url)")
         // 현재 세션 확인 (미로그인이면 nil)
         Task {
             let email = await supabase.currentSessionEmail()
             NSLog("[TokenPals] 현재 세션: \(email ?? "(미로그인)")")
+            await MainActor.run {
+                self.rebuildStatusMenu()
+            }
         }
     }
 
@@ -55,8 +61,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func rebuildStatusMenu() {
         let menu = NSMenu()
 
-        // 헤더
-        let header = NSMenuItem(title: "TokenPals", action: nil, keyEquivalent: "")
+        // 헤더 (로그인 상태 반영)
+        let headerTitle: String
+        if let email = auth?.currentUserEmail {
+            headerTitle = "TokenPals · \(email)"
+        } else {
+            headerTitle = "TokenPals"
+        }
+        let header = NSMenuItem(title: headerTitle, action: nil, keyEquivalent: "")
         header.isEnabled = false
         menu.addItem(header)
         menu.addItem(NSMenuItem.separator())
@@ -121,6 +133,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(refreshItem)
 
         menu.addItem(NSMenuItem.separator())
+
+        // 인증 (로그인 / 로그아웃)
+        if auth?.isAuthenticated == true {
+            let signOutItem = NSMenuItem(
+                title: L10n.isKorean ? "로그아웃" : "Sign out",
+                action: #selector(signOut),
+                keyEquivalent: ""
+            )
+            signOutItem.target = self
+            menu.addItem(signOutItem)
+        } else {
+            let signInItem = NSMenuItem(
+                title: L10n.isKorean ? "로그인..." : "Sign in...",
+                action: #selector(openSignIn),
+                keyEquivalent: ""
+            )
+            signInItem.target = self
+            menu.addItem(signInItem)
+        }
 
         // 설정
         let settingsItem = NSMenuItem(
@@ -252,6 +283,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func openSignIn() {
+        if signInWindow == nil {
+            let win = SignInWindow(auth: auth)
+            win.onSuccess = { [weak self] in
+                NSLog("[TokenPals] 로그인 성공: \(self?.auth?.currentUserEmail ?? "?")")
+                self?.rebuildStatusMenu()
+            }
+            signInWindow = win
+        }
+        signInWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func signOut() {
+        Task {
+            do {
+                try await auth.signOut()
+                await MainActor.run {
+                    NSLog("[TokenPals] 로그아웃 완료")
+                    self.rebuildStatusMenu()
+                }
+            } catch {
+                NSLog("[TokenPals] 로그아웃 실패: \(error)")
+            }
+        }
     }
 
     @objc private func quitApp() {
