@@ -7,12 +7,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var roomWindow: RoomWindow!
     var tokenTracker: TokenTracker!
     var usageEngine: UsageEngine!
+    var fileWatcher: FileWatcher?
     var pet: PetActor!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusBar()
         setupRoom()
         setupUsageEngine()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        fileWatcher?.stop()
+        usageEngine?.stop()
     }
 
     // MARK: - Menu Bar
@@ -157,7 +163,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         usageEngine.onUpdate = { [weak self] summary in
             self?.handleUsageUpdate(summary)
         }
-        usageEngine.start(interval: 30)
+        // 폴링은 60초 안전망 (실시간 워처가 대부분 처리)
+        usageEngine.start(interval: 60)
+
+        // FSEvents 기반 실시간 워처
+        let watchPaths = tokenTracker.claudeProjectsDirs
+        if !watchPaths.isEmpty {
+            fileWatcher = FileWatcher(paths: watchPaths) { [weak self] in
+                self?.usageEngine.triggerRefresh()
+            }
+            fileWatcher?.start()
+        }
     }
 
     private func handleUsageUpdate(_ summary: UsageSummary) {
