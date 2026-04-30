@@ -7,8 +7,9 @@
 | **0. 셋업** | ✅ 완료 | 1일 | SPM, 메뉴바, 빈 방, 첫 픽셀 펫 |
 | **1. 단일 계정 단일 디바이스** | ✅ 완료 | 1주 | 실 토큰 데이터 + mood + 알림 + 설정 |
 | **1.5. 다듬기** | ⏸ 대기 | 1주 | 실시간 워처, 위젯, 말풍선, 깜빡 |
-| **2. 단일 계정 멀티 디바이스 (Supabase)** | 🟡 진행중 | 2~3일 | Email OTP 로그인 + 디바이스 등록 + DB 스키마 |
-| **2.4 Realtime 동기화** | ⏸ 대기 | 1주 | 다른 머신과 실시간 합산 |
+| **2. 단일 계정 멀티 디바이스 (Supabase)** | ✅ 완료 | 2~3일 | Email OTP 로그인 + 디바이스 등록 + DB 스키마 |
+| **2.4 Realtime 동기화 인프라** | ✅ 완료 | 1일 | DeviceStatusManager + SessionSyncManager + RealtimeManager |
+| **2.5 다중 디바이스 펫 UI** | ✅ 완료 | 1일 | 각 디바이스마다 펫 표시 + Realtime 무드 업데이트 |
 | **3. 멀티 계정 / 팀 / 방 꾸미기** | ⏸ 대기 | 2~3주 | 본인 다른 계정, 동료 초대, 가구·존 |
 
 ## Phase 0: 개발 환경 셋업 ✅ 완료
@@ -116,13 +117,22 @@
 - [x] **AppDelegate 통합** (로그인 → 자동 디바이스 등록)
 - [ ] **Supabase 마이그레이션 수동 실행** ← 다음 스텝 (사용자 액션)
 
-### Phase 2.4: Realtime 동기화 ⏸ 대기
+### Phase 2.4: Realtime 동기화 인프라 ✅ 완료
 
-- [ ] **로컬 SQLite 셋업** (`GRDB.swift`)
-- [ ] **동기화 큐** (오프라인 대비, 큐 → 백그라운드 워커)
-- [ ] **Supabase Realtime 구독** (다른 디바이스 새 turn → 즉시 UI 갱신)
-- [ ] **multi-pet UI** (방에 디바이스마다 1마리, 같은 계정 공유)
-- [ ] **Heartbeat** (`devices.last_seen` 갱신 → 오프라인 감지)
+- [x] **DeviceStatusManager** (30초 heartbeat → device_status 테이블 업데이트)
+- [x] **SessionSyncManager** (60초마다 JSONL → sessions/turns 테이블 동기화)
+- [x] **RealtimeManager** (device_status 구독 인프라 + onDeviceStatusChanged 콜백)
+- [x] **Supabase 마이그레이션** 실행 완료 (accounts, devices, sessions, turns, device_status)
+
+### Phase 2.5: 다중 디바이스 펫 UI ✅ 완료
+
+- [x] **PetActor deviceId 지원** (init에 deviceId 매개변수 추가)
+- [x] **RoomView.addPet 수정** (deviceId 전달)
+- [x] **DeviceManager.allDevices()** (계정의 모든 디바이스 로드)
+- [x] **AppDelegate.loadAndDisplayAllDevices()** (모든 디바이스의 펫 생성)
+- [x] **petsByDeviceId 매핑** (Realtime 콜백에서 펫 찾기)
+- [x] **다중 펫 UI** (방에 디바이스마다 1마리, 각자 색상/이름 유지)
+- [x] **Realtime 펫 업데이트** (다른 디바이스 mood 변화 → 해당 펫 상태 업데이트)
 
 ### 종료 조건
 - 두 머신에서 같은 계정으로 로그인 → 자동 동기화
@@ -210,6 +220,9 @@
 ### Phase 2
 - 2026-04-30 Phase 2.1 완료 — Supabase SDK 통합, 클라이언트 초기화
 - 2026-04-30 Phase 2.2 완료 — Email OTP 로그인 (SignInWindow + AuthManager)
-- 2026-04-30 Phase 2.3 구현 완료 — DeviceManager + DB 스키마 (RLS 포함)
-  - 마이그레이션 파일 준비 (수동 실행 대기)
-  - 다음: Supabase Dashboard에서 마이그레이션 실행 후 Phase 2.4로
+- 2026-04-30 Phase 2.3 완료 — DeviceManager + DB 스키마 (RLS 포함)
+  - Supabase 마이그레이션 실행 완료
+- 2026-04-30 Phase 2.3 추가 — 이메일 필터링 (여러 Claude 계정 폴더 중 매칭 폴더만 추적)
+- 2026-04-30 Phase 2.4 완료 — DeviceStatusManager, SessionSyncManager, RealtimeManager 구현
+- 2026-04-30 Phase 2.5 완료 — 다중 디바이스 펫 UI (각 디바이스마다 펫 표시)
+  - 다음: Keychain 호출 최소화, Realtime API 완전 구현
