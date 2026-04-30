@@ -1,21 +1,24 @@
-// AppDelegate: wires up the menu bar and the room window.
-// Phase 0: spawn a few demo pets so we can visually verify the room works.
+// AppDelegate: wires up the menu bar, room window, and live usage data.
 
 import Cocoa
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
     var roomWindow: RoomWindow!
+    var tokenTracker: TokenTracker!
+    var usageEngine: UsageEngine!
+    var pet: PetActor!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusBar()
         setupRoom()
+        setupUsageEngine()
     }
 
     // MARK: - Menu Bar
 
     private func setupStatusBar() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             button.title = "🥔"
         }
@@ -29,6 +32,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let header = NSMenuItem(title: "TokenPals", action: nil, keyEquivalent: "")
         header.isEnabled = false
         menu.addItem(header)
+        menu.addItem(NSMenuItem.separator())
+
+        // 사용량 요약 (UsageEngine.current 기반)
+        let s = usageEngine?.current ?? UsageSummary()
+        let todayItem = NSMenuItem(
+            title: usageLine(label: L10n.isKorean ? "오늘" : "Today", value: TokenUsage.formatTokens(s.todayTotal)),
+            action: nil, keyEquivalent: ""
+        )
+        todayItem.isEnabled = false
+        menu.addItem(todayItem)
+
+        let fivehItem = NSMenuItem(
+            title: usageLine(label: L10n.isKorean ? "5시간" : "5h", value: TokenUsage.formatTokens(s.fiveHourTotal)),
+            action: nil, keyEquivalent: ""
+        )
+        fivehItem.isEnabled = false
+        menu.addItem(fivehItem)
+
+        let cachePct = Int(s.cacheHitRate * 100)
+        let cacheItem = NSMenuItem(
+            title: usageLine(label: L10n.isKorean ? "캐시" : "Cache", value: "\(cachePct)%"),
+            action: nil, keyEquivalent: ""
+        )
+        cacheItem.isEnabled = false
+        menu.addItem(cacheItem)
+
+        let activityText = lastActivityDescription(for: s)
+        let activityItem = NSMenuItem(title: activityText, action: nil, keyEquivalent: "")
+        activityItem.isEnabled = false
+        menu.addItem(activityItem)
+
         menu.addItem(NSMenuItem.separator())
 
         // 방 토글
@@ -50,9 +84,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         pinToggle.state = (roomWindow?.isPinned == true) ? .on : .off
         menu.addItem(pinToggle)
 
+        // 새로고침 (즉시)
+        let refreshItem = NSMenuItem(
+            title: L10n.isKorean ? "지금 새로고침" : "Refresh now",
+            action: #selector(refreshUsage),
+            keyEquivalent: ""
+        )
+        refreshItem.target = self
+        menu.addItem(refreshItem)
+
         menu.addItem(NSMenuItem.separator())
 
-        // 종료
         let quit = NSMenuItem(title: L10n.menuQuit, action: #selector(quitApp), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
@@ -60,18 +102,68 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
     }
 
+    /// "label  value" 형태로 좌우 정렬 비슷하게 (모노스페이스 가정).
+    private func usageLine(label: String, value: String) -> String {
+        return "\(label)\t\(value)"
+    }
+
+    private func lastActivityDescription(for s: UsageSummary) -> String {
+        guard let last = s.lastActivityAt else {
+            return L10n.isKorean ? "마지막 활동: -" : "Last activity: -"
+        }
+        let mins = Int(Date().timeIntervalSince(last) / 60)
+        if L10n.isKorean {
+            if mins < 1 { return "마지막 활동: 방금" }
+            if mins < 60 { return "마지막 활동: \(mins)분 전" }
+            let hours = mins / 60
+            return "마지막 활동: \(hours)시간 전"
+        } else {
+            if mins < 1 { return "Last activity: just now" }
+            if mins < 60 { return "Last activity: \(mins)m ago" }
+            let hours = mins / 60
+            return "Last activity: \(hours)h ago"
+        }
+    }
+
+    private func updateStatusBarTitle(with summary: UsageSummary) {
+        guard let button = statusItem.button else { return }
+        if summary.todayTotal > 0 {
+            button.title = "🥔 \(TokenUsage.formatTokens(summary.todayTotal))"
+        } else {
+            button.title = "🥔"
+        }
+    }
+
     // MARK: - Room
 
     private func setupRoom() {
         roomWindow = RoomWindow()
 
-        // Phase 0 데모: 3색 펫을 한 방에 띄움 (실제로는 등록된 디바이스 기반)
-        roomWindow.roomView.addPet(color: PetColor.palette[0], name: "맥북프로")
-        roomWindow.roomView.addPet(color: PetColor.palette[1], name: "데스크탑")
-        roomWindow.roomView.addPet(color: PetColor.palette[2], name: "노트북")
+        // 현재 머신을 대표하는 단일 펫.
+        let name = Host.current().localizedName ?? (L10n.isKorean ? "이 맥" : "This Mac")
+        // 호스트네임 해시 → 6색 중 하나로 (확정적)
+        let colorIndex = abs(name.utf8.reduce(0) { Int($0) + Int($1) }) % PetColor.palette.count
+        pet = roomWindow.roomView.addPet(color: PetColor.palette[colorIndex], name: name)
 
         roomWindow.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // MARK: - Usage Engine
+
+    private func setupUsageEngine() {
+        tokenTracker = TokenTracker()
+        usageEngine = UsageEngine(tokenTracker: tokenTracker)
+        usageEngine.onUpdate = { [weak self] summary in
+            self?.handleUsageUpdate(summary)
+        }
+        usageEngine.start(interval: 30)
+    }
+
+    private func handleUsageUpdate(_ summary: UsageSummary) {
+        pet?.summary = summary // PetActor가 mood/tooltip 자동 갱신
+        updateStatusBarTitle(with: summary)
+        rebuildStatusMenu()
     }
 
     // MARK: - Actions
@@ -90,6 +182,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func togglePin() {
         roomWindow?.togglePin()
         rebuildStatusMenu()
+    }
+
+    @objc private func refreshUsage() {
+        usageEngine?.refresh()
     }
 
     @objc private func quitApp() {
