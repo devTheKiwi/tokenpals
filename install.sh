@@ -76,11 +76,48 @@ if [ ! -f ".build/release/TokenPals" ]; then
 fi
 success "빌드 완료"
 
-# 5. 앱 설치
+# 5. 앱 번들 생성 및 설치
 info "5️⃣  앱 설치 중..."
 mkdir -p /Applications
-cp -r "$REPO_DIR/.build/release/TokenPals" /Applications/TokenPals.app || error "설치 실패"
-chmod +x /Applications/TokenPals.app/Contents/MacOS/TokenPals
+
+# .app 번들 디렉토리 구조 생성
+APP_BUNDLE="/Applications/TokenPals.app"
+rm -rf "$APP_BUNDLE" 2>/dev/null || true
+mkdir -p "$APP_BUNDLE/Contents/MacOS"
+mkdir -p "$APP_BUNDLE/Contents/Resources"
+
+# 실행 파일 복사
+cp "$REPO_DIR/.build/release/TokenPals" "$APP_BUNDLE/Contents/MacOS/TokenPals" || error "설치 실패"
+chmod +x "$APP_BUNDLE/Contents/MacOS/TokenPals"
+
+# Info.plist 생성
+cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>TokenPals</string>
+    <key>CFBundleDisplayName</key>
+    <string>TokenPals</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.tokenpals.app</string>
+    <key>CFBundleExecutable</key>
+    <string>TokenPals</string>
+    <key>CFBundleVersion</key>
+    <string>1.0.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+
 success "앱 설치 완료: /Applications/TokenPals.app"
 
 # 6. 앱 실행
