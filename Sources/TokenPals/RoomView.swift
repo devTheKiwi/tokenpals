@@ -64,8 +64,8 @@ class RoomView: NSView {
 
     /// 새 PetActor 추가. 바닥 영역 안 랜덤 위치에 스폰.
     @discardableResult
-    func addPet(color: PetColor, name: String) -> PetActor {
-        let pet = PetActor(color: color, deviceName: name)
+    func addPet(color: PetColor, deviceId: String = "", name: String) -> PetActor {
+        let pet = PetActor(color: color, deviceId: deviceId, deviceName: name)
 
         let margin: CGFloat = 12
         let floorTopY = bounds.minY + bounds.height * 0.5

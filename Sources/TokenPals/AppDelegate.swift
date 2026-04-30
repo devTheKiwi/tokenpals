@@ -19,6 +19,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var deviceStatusManager: DeviceStatusManager?
     var sessionSyncManager: SessionSyncManager?
     var realtimeManager: RealtimeManager?
+    private var petsByDeviceId: [String: PetActor] = [:]  // Phase 2.5: Realtime 콜백용
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Settings.registerDefaults()
@@ -57,6 +58,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
                 // Phase 2.4: Realtime 매니저 시작
                 self.setupRealtimeManagers(deviceId: info.id, accountId: info.accountId)
+
+                // Phase 2.5: 모든 디바이스 로드 및 펫 표시
+                Task {
+                    await self.loadAndDisplayAllDevices(accountId: info.accountId)
+                }
             }
         } catch {
             NSLog("[TokenPals] 디바이스 등록 실패: \(error.localizedDescription)")
@@ -88,10 +94,49 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             accountId: accountId
         )
         realtimeManager?.onDeviceStatusChanged = { [weak self] deviceId, status in
-            // 다른 디바이스 상태 변화 → UI 업데이트 (향후 multi-pet)
-            NSLog("[TokenPals] 다른 디바이스 상태 변화 감지: \(deviceId)")
+            // Phase 2.5: 다른 디바이스 상태 변화 → 해당 펫 업데이트
+            guard let self = self, let pet = self.petsByDeviceId[deviceId] else { return }
+            if let moodStr = status["mood"] as? String {
+                let mood: PetMood
+                switch moodStr {
+                case "working": mood = .working
+                case "sleepy": mood = .sleepy
+                case "alarm": mood = .alarm
+                default: mood = .normal
+                }
+                pet.mood = mood
+            }
+            NSLog("[TokenPals] 펫 업데이트 (device=\(deviceId))")
         }
         realtimeManager?.subscribe()
+    }
+
+    /// Phase 2.5: 계정의 모든 디바이스 로드 및 다중 펫 표시.
+    private func loadAndDisplayAllDevices(accountId: String) async {
+        do {
+            let devices = try await deviceManager.allDevices(accountId: accountId)
+            await MainActor.run {
+                // 기존 펫 제거
+                roomWindow.roomView.removeAllPets()
+                petsByDeviceId.removeAll()
+
+                // 모든 디바이스에 대해 펫 생성
+                for device in devices {
+                    let petColor = PetColor.palette[device.colorIndex]
+                    let pet = roomWindow.roomView.addPet(color: petColor, deviceId: device.id, name: device.name)
+                    petsByDeviceId[device.id] = pet
+
+                    // 현재 디바이스의 펫을 self.pet으로 업데이트 (fallback 용)
+                    if device.id == self.deviceInfo?.id {
+                        self.pet = pet
+                    }
+                }
+
+                NSLog("[TokenPals] 다중 펫 로드: \(devices.count)개 디바이스")
+            }
+        } catch {
+            NSLog("[TokenPals] 디바이스 로드 실패: \(error.localizedDescription)")
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -303,7 +348,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleUsageUpdate(_ summary: UsageSummary) {
-        pet?.summary = summary // PetActor가 mood/tooltip 자동 갱신
+        // Phase 2.5: 현재 디바이스의 펫 업데이트 (또는 fallback으로 pet)
+        if let deviceId = deviceInfo?.id, let pet = petsByDeviceId[deviceId] {
+            pet.summary = summary
+        } else {
+            pet?.summary = summary
+        }
         updateStatusBarTitle(with: summary)
         rebuildStatusMenu()
         notificationManager?.handleUsageUpdate(summary)

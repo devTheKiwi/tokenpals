@@ -48,6 +48,25 @@ class DeviceManager {
         return try await ensureDevice(accountId: accountId)
     }
 
+    /// 계정의 모든 디바이스 조회 (Phase 2.5: 다중 펫).
+    func allDevices(accountId: String) async throws -> [LocalDeviceInfo] {
+        let rows: [DeviceRow] = try await client
+            .from("devices")
+            .select()
+            .eq("account_id", value: accountId)
+            .execute()
+            .value
+
+        return rows.map { row in
+            LocalDeviceInfo(
+                id: row.id,
+                accountId: row.accountId,
+                name: row.name,
+                colorIndex: row.colorIndex
+            )
+        }
+    }
+
     // MARK: - Account
 
     private func ensureAccount() async throws -> String {

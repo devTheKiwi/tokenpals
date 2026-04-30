@@ -65,6 +65,7 @@ class PetActor: NSView {
     private var targetPoint: NSPoint?
     private let walkSpeed: CGFloat = 0.6
 
+    var deviceId: String = ""       // Phase 2.5: Realtime 이벤트 매칭용
     var deviceName: String = ""
     var onClicked: (() -> Void)?
     var onDoubleClicked: (() -> Void)?
@@ -93,10 +94,11 @@ class PetActor: NSView {
     private let sparkleColor = NSColor(red: 1.0, green: 0.85, blue: 0.30, alpha: 0.85)
     private let alarmColor = NSColor(red: 0.95, green: 0.30, blue: 0.30, alpha: 0.85)
 
-    init(color: PetColor, deviceName: String = "", origin: NSPoint = .zero) {
+    init(color: PetColor, deviceId: String = "", deviceName: String = "", origin: NSPoint = .zero) {
         self.bodyColor = color.body
         self.bodyHighlightColor = PetActor.lighten(color.body, by: 0.18)
         self.outlineColor = color.foot
+        self.deviceId = deviceId
         self.deviceName = deviceName
         super.init(frame: NSRect(origin: origin, size: PetActor.petSize))
         wantsLayer = true
