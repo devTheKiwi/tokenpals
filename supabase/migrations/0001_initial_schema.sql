@@ -35,8 +35,12 @@ CREATE TABLE devices (
     app_version   TEXT,
     last_seen_at  TIMESTAMPTZ,
     is_online     BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(account_id, hostname)  -- Phase 2.6: 중복 디바이스 생성 방지
 );
+
+-- 디바이스 조회 인덱스
+CREATE INDEX idx_devices_account_hostname ON devices(account_id, hostname);
 
 -- 세션 (Claude Code의 한 JSONL 파일 단위)
 CREATE TABLE sessions (
